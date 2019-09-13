@@ -96,6 +96,11 @@ for i in range(1000):#epoch_times
     loss.backward()
     optimizer.step()
     optimizer.zero_grad()
+    
+    if (i + 1) % 10 == 0:
+        loss_for_plt = round(loss.item(), 5)
+        loss_track.append(loss_for_plt)
+        #print(loss_for_plt)
 
     if (i + 1) % 100 == 0:
         print('Epoch: {}, Loss:{:.5f}'.format(i + 1, loss.item()))
@@ -120,3 +125,6 @@ plt.plot((train_size, train_size), (0, 1), 'g--')
 plt.legend(loc='best')
 plt.show()
 
+plt.plot(loss_track, 'r',label='loss')
+plt.legend(loc='best')
+plt.show()
