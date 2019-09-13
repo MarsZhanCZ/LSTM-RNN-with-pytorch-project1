@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 data_close = ts.get_k_data('000001', start='2019-01-01', index=True)['close'].values  # 获取上证指数从20180101开始的收盘价的np.ndarray
 data_close = data_close.astype('float32')  # 转换数据类型
+data_close = data_close[::-1]#日期倒序变正序
 
 # 将价格标准化到0~1
 max_value = np.max(data_close)
