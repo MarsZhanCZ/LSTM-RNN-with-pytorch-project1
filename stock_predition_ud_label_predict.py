@@ -2,10 +2,11 @@ import numpy as np
 import tushare as ts
 import torch
 from torch import nn
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
 #data_close = ts.get_k_data('000001', start='2018-01-01', index=True)['close'].values  # 获取上证指数从20180101开始的收盘价的np.ndarray
-data_close = ts.get_hist_data('600036', start='20180101', end='20190830')['close'].values
+data_close = ts.get_hist_data('600036', start='20170101', end='20190830')['close'].values
 #data_close = ts.get_hist_data('600770', start='20180101', end='20190830')['close'].values
 data_close = data_close.astype('float32')  # 转换数据类型
 print(type(data_close))
@@ -35,16 +36,16 @@ def create_dataset(data, days_for_train=5) -> (np.array, np.array): #->用于指
 
         若给定序列的长度为d，将输出长度为(d-days_for_train+1)个输入/输出对
     """
-    dataset_cmp_ud=[0]
+    dataset_cmp_ud=[[0,0]]
     last = -1;#初始值
-    print(len(data))
-    for i in range(10,len(data)-1):#0,1,2...len-1
+    print('data长度：',len(data))
+    for i in range(10, len(data)-1):#0,1,2...len-1
         if data[i+1] > data[i]:
-            dataset_cmp_ud.append(float(1))
+            dataset_cmp_ud.append([0, 1])
         elif data[i+1] < data[i]:
-            dataset_cmp_ud.append(float(-1))
+            dataset_cmp_ud.append([1, 0])
         else:
-            dataset_cmp_ud.append(float(0))
+            dataset_cmp_ud.append([0, 1])
     print(dataset_cmp_ud)
     dataset_x, dataset_y = [], []
     for i in range(len(data) - days_for_train):
@@ -58,14 +59,14 @@ def create_dataset(data, days_for_train=5) -> (np.array, np.array): #->用于指
 dataset_x, dataset_y = create_dataset(data_close, DAYS_FOR_TRAIN)
 
 # 划分训练集和测试集，70%作为训练集
-train_size = int(len(dataset_x) * 0.7)
+train_size = int(len(dataset_x) * 0.8)
 
 train_x = dataset_x[:train_size]
 train_y = dataset_y[:train_size]
 
 # 将数据改变形状，RNN 读入的数据维度是 (seq_size, batch_size, feature_size)
 train_x = train_x.reshape(-1, 1, DAYS_FOR_TRAIN)
-train_y = train_y.reshape(-1, 1, 1)
+train_y = train_y.reshape(-1, 1, 2)
 
 # 转为pytorch的tensor对象
 train_x = torch.from_numpy(train_x)#torch.Size([129, 1, 10])
@@ -84,31 +85,45 @@ class LSTM_Regression(nn.Module):
         - num_layers: layers of LSTM to stack
     """
 
-    def __init__(self, input_size, hidden_size, output_size=1, num_layers=2):
+    def __init__(self, input_size, hidden_size, output_size=2, num_layers=2, num_class=2):
         super().__init__()
-
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers)
         self.fc = nn.Linear(hidden_size, output_size)
+        self.classifier = nn.Linear(hidden_size, num_class)
 
     def forward(self, _x):
+        #print('train_x的维度是：', _x.shape)
         x, _ = self.lstm(_x)  # _x is input, size (seq_len, batch, input_size)
         s, b, h = x.shape  # x is output, size (seq_len, batch, hidden_size)
+        #print('输出的维度是s, b, h:', s, b, h)
         x = x.view(s * b, h)
         x = self.fc(x)
         x = x.view(s, b, -1)  # 把形状改回来
-        return x
+        #out =  F.log_softmax(x, dim=-1)
+        #print(out)
+
+        #x输出的是预测值，out_classifier输出的是三分类
+        #out_classifier = x
+        #out_classifier = out_classifier[-1, :, :]
+        #out_classifier = self.classifier(out_classifier)
+        #print(x, out_classifier)
+        return x#, out_classifier
 
 
-model = LSTM_Regression(DAYS_FOR_TRAIN, 8, output_size=1, num_layers=2)#如果是要多维输出则output_size=n
+model = LSTM_Regression(DAYS_FOR_TRAIN, 16, output_size=2, num_layers=2, num_class=2)#如果是要多维输出则output_size=n
 
 loss_function = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+optimizer = torch.optim.Adam(model.parameters(), lr=2e-2)
 loss_track = []
 
 #训练
-for i in range(2000):#epoch_times
+for i in range(2300):#epoch_times
     out = model(train_x)#等价于model.forward(train_x)
     #print(out.size())#torch.Size([129.1.1])
+    #print('当前网络输出是：')
+    #print(out)
+    #print(train_y)
+
     loss = loss_function(out, train_y.float())
 
     loss.backward()
@@ -134,15 +149,16 @@ dataset_x = dataset_x.reshape(-1, 1, DAYS_FOR_TRAIN)  # (seq_size, batch_size, f
 dataset_x = torch.from_numpy(dataset_x)
 
 pred_test = model(dataset_x)  # 全量训练集的模型输出 (seq_size, batch_size, output_size)
-pred_test = pred_test.view(-1).data.numpy()
+pred_test = pred_test.data.numpy()#pred_test = pred_test.view(-1).data.numpy()
+#print(pred_test)
 #pred_test = np.concatenate((np.zeros(DAYS_FOR_TRAIN), pred_test))  # 填充0 使长度相同,concatenate是矩阵拼接
-print(len(pred_test),len(dataset_y))
+print(len(pred_test), len(dataset_y))
 #assert len(pred_test) == len(dataset_y)#检查条件，不符合就终止程序
 
 stat_for_def_total=0
 stat_for_def_once=0
-for i in range(0,len(dataset_y)):
-    if (dataset_y[i]>0 and pred_test[i]>0) or (dataset_y[i]<0 and pred_test[i]<0) or ((dataset_y[i]==0 and pred_test[i]==0)):
+for i in range(0, len(dataset_y)):
+    if (np.argmax(pred_test[i][0]) == (np.argmax(dataset_y[i]))):
         stat_for_def_total+=1
 
         if i > (0.7*len(dataset_x)):
