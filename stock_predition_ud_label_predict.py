@@ -165,6 +165,11 @@ for i in range(0, len(dataset_y)):
             stat_for_def_once += 1
 print('涨跌趋势2分类全集正确率：',stat_for_def_total/(len(dataset_y)+1))
 print('涨跌趋势2分类全集正确率：', stat_for_def_once / ((len(dataset_y) + 1)*0.3))
+
+'''
+下面部分都是绘图，正确率还不知道怎么画图好…所以没有修改绘图部分的代码。
+目前程序运行到这会自动停，幸好python是解释型语言不影响前面的运算。
+'''
 plt.plot(pred_test, 'r', label='prediction')
 plt.plot(dataset_y, 'b', label='real')
 plt.plot((train_size, train_size), (0, 1), 'g--')
